@@ -51,7 +51,7 @@ func (m *Module) Name() string { return "gas-migrate" }
 // Init validates dependencies and creates the migrations tracking table.
 func (m *Module) Init() error {
 	if m.db == nil {
-		return fmt.Errorf("gas-migrate: DatabaseProvider is required")
+		return fmt.Errorf("%s: DatabaseProvider is required", m.Name())
 	}
 	return m.createTrackingTable(context.Background())
 }
