@@ -1,0 +1,140 @@
+# gas-migrate
+
+Migration manager for the [Gas](https://github.com/gasmod/gas) ecosystem. Tracks and applies database migrations across
+all Gas modules with dirty-state detection and rollback support.
+
+## Install
+
+```
+go get github.com/gasmod/gas-migrate
+```
+
+## Usage
+
+### Wiring in `main.go`
+
+```go
+package main
+
+import (
+	"github.com/gasmod/gas"
+	database "github.com/gasmod/gas-database"
+	migrate "github.com/gasmod/gas-migrate"
+)
+
+func main() {
+	db := database.New(database.WithConfig(&database.Config{
+		Driver: "postgres",
+		DSN:    "postgres://localhost:5432/myapp",
+	}))
+
+	migrationMgr := migrate.New(
+		migrate.WithDatabaseProvider(db),
+	)
+
+	app := gas.NewApp(
+		gas.WithModule(db),
+		gas.WithModule(migrationMgr),
+		// Pass migrationMgr to other modules so they can register migrations.
+		gas.WithModule(auth.New(
+			auth.WithMigrationManager(migrationMgr),
+		)),
+	)
+
+	app.Run()
+}
+```
+
+### Registering migrations
+
+Modules register their migrations during `Init()`. There are three ways to register.
+
+#### Single migration
+
+```go
+func (m *Module) Init() error {
+	m.migrationMgr.Register(m.Name(), gas.Migration{
+		Version:     "20250216_001",
+		Description: "create users table",
+		Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
+		Down:        "DROP TABLE users;",
+	})
+	return nil
+}
+```
+
+#### Slice of migrations
+
+```go
+func (m *Module) Init() error {
+	m.migrationMgr.RegisterSlice(m.Name(), []gas.Migration{
+	{
+		Version:     "20250216_001",
+		Description: "create users table",
+		Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
+		Down:        "DROP TABLE users;",
+	},
+	{
+		Version:     "20250216_002",
+		Description: "create sessions table",
+		Up:          "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INT REFERENCES users(id));",
+		Down:        "DROP TABLE sessions;",
+	},
+})
+return nil
+}
+```
+
+#### Embedded SQL files
+
+```go
+import "embed"
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+func (m *Module) Init() error {
+	return m.migrationMgr.RegisterFS(m.Name(), migrationsFS)
+}
+```
+
+Files must follow this naming convention:
+
+```
+migrations/
+    20250216_001_create_users.up.sql
+    20250216_001_create_users.down.sql
+    20250216_002_create_sessions.up.sql
+    20250216_002_create_sessions.down.sql
+```
+
+The version is the `YYYYMMDD_NNN` prefix, and the description is parsed from the remaining segments (underscores become
+spaces).
+
+### Running migrations
+
+```go
+// Apply all pending migrations in global version order.
+err := migrationMgr.RunPending()
+
+// Roll back the last 2 applied migrations.
+err := migrationMgr.Down(2)
+```
+
+## How it works
+
+- Migrations are tracked in a `__gas_migrations` table created automatically on `Init()`.
+- `RunPending()` sorts all registered migrations globally by version across all modules and applies any that haven't
+  been applied yet.
+- Each migration runs in its own transaction. If a migration fails, it is marked **dirty** and all further execution is
+  blocked until the dirty state is manually resolved.
+- `Down(n)` reverses the last `n` applied migrations in reverse version order.
+
+## Dirty migrations
+
+If a migration fails, it is recorded as dirty in the tracking table. Subsequent calls to `RunPending()` will return an
+error listing the dirty versions. To resolve:
+
+1. Fix the underlying issue (bad SQL, missing dependency, etc.).
+2. Manually remove or update the dirty row in `__gas_migrations`.
+3. Run `RunPending()` again.
