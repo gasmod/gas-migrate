@@ -5,10 +5,10 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/gabriel-vasile/mimetype v1.4.13 h1:46nXokslUBsAJE/wMsp5gtO500a4F3Nkz9Ufpk2AcUM=
 github.com/gabriel-vasile/mimetype v1.4.13/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9tea18J8ufA774AB3s=
-github.com/gasmod/gas v0.0.9 h1:7mPRa5iQUuHBJVoT7BepjST3miEQ9ChWb9Qs8Rc4gYU=
-github.com/gasmod/gas v0.0.9/go.mod h1:Z18abdcMDo3SMGO8veRj2IgAK0b3qw2No6Psyo77GDw=
-github.com/gasmod/gas-config v0.0.1 h1:sBVjHnQzBgHfkKSfAAFmjio7zYdI5kKklAMuiE90utw=
-github.com/gasmod/gas-config v0.0.1/go.mod h1:szFuttgI2tDbBf3220QKgNajE8Vp2IPB6bN+6aHc3MY=
+github.com/gasmod/gas v0.0.14 h1:wQWhiLFkSTbGyLA4eurhxR+5LZuN9JNRfHWQpA/89vY=
+github.com/gasmod/gas v0.0.14/go.mod h1:BbnPwTU+IOWaolqtLZw+nNG4E7qUXFyf5D67nwVHmLw=
+github.com/gasmod/gas-config v0.0.14 h1:S+LRoE5S0xHmbuTNT9j/6/9ydLQJNfkrS/P0as+dZhw=
+github.com/gasmod/gas-config v0.0.14/go.mod h1:szFuttgI2tDbBf3220QKgNajE8Vp2IPB6bN+6aHc3MY=
 github.com/gasmod/gas-database v0.0.3 h1:WY/1Hp+wyLgxXQLbScWjYJ0X7imW4ZKgiKQAT+RiFVM=
 github.com/gasmod/gas-database v0.0.3/go.mod h1:vS1qA80iVs+6MHafNAp/HbaEFlXJjtOXKbn9NbZK0kQ=
 github.com/go-chi/chi/v5 v5.2.5 h1:Eg4myHZBjyvJmAFjFvWgrqDTXFyOzjj7YIm3L3mu6Ug=
