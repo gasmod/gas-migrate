@@ -12,21 +12,21 @@ import (
 	"github.com/gasmod/gas"
 )
 
-// Register adds a migration owned by the given module.
-func (m *Module) Register(module string, migration gas.Migration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// Register adds a migration owned by the given service.
+func (s *Service) Register(module string, migration gas.Migration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	migration.Module = module
-	m.migrations[module] = append(m.migrations[module], migration)
+	s.migrations[module] = append(s.migrations[module], migration)
 }
 
-// RegisterSlice adds multiple migrations at once for the given module.
-func (m *Module) RegisterSlice(module string, migrations []gas.Migration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// RegisterSlice adds multiple migrations at once for the given service.
+func (s *Service) RegisterSlice(module string, migrations []gas.Migration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, migration := range migrations {
 		migration.Module = module
-		m.migrations[module] = append(m.migrations[module], migration)
+		s.migrations[module] = append(s.migrations[module], migration)
 	}
 }
 
@@ -39,17 +39,17 @@ func (m *Module) RegisterSlice(module string, migrations []gas.Migration) {
 // The version is extracted as the YYYYMMDD_NNN prefix (digits_digits), and
 // the description is the remaining underscored segment converted to spaces.
 // Every .up.sql file must have a matching .down.sql file.
-func (m *Module) RegisterFS(module string, fsys fs.FS) error {
+func (s *Service) RegisterFS(module string, fsys fs.FS) error {
 	pairs, err := parseMigrationFS(fsys)
 	if err != nil {
 		return fmt.Errorf("gas-migrate: %w", err)
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, p := range pairs {
 		p.migration.Module = module
-		m.migrations[module] = append(m.migrations[module], p.migration)
+		s.migrations[module] = append(s.migrations[module], p.migration)
 	}
 	return nil
 }
@@ -120,17 +120,17 @@ func parseStem(stem string) (version, description string) {
 
 // RunPending applies all unapplied migrations in global version order.
 // If any migration is marked dirty, execution is blocked until resolved.
-func (m *Module) RunPending() error {
-	if m.closed.Load() {
-		return fmt.Errorf("gas-migrate: module is closed")
+func (s *Service) RunPending() error {
+	if s.closed.Load() {
+		return fmt.Errorf("gas-migrate: service is closed")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	ctx := context.Background()
 
-	dirty, err := m.getDirtyMigrations(ctx)
+	dirty, err := s.getDirtyMigrations(ctx)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func (m *Module) RunPending() error {
 		return fmt.Errorf("gas-migrate: dirty migrations block execution: %s", strings.Join(versions, ", "))
 	}
 
-	applied, err := m.getAppliedMigrations(ctx)
+	applied, err := s.getAppliedMigrations(ctx)
 	if err != nil {
 		return err
 	}
@@ -151,13 +151,13 @@ func (m *Module) RunPending() error {
 		appliedSet[a.Version] = struct{}{}
 	}
 
-	all := m.allMigrationsSorted()
+	all := s.allMigrationsSorted()
 
 	for _, migration := range all {
 		if _, ok := appliedSet[migration.Version]; ok {
 			continue
 		}
-		if err := m.applyUp(ctx, migration); err != nil {
+		if err := s.applyUp(ctx, migration); err != nil {
 			return err
 		}
 	}
@@ -166,22 +166,22 @@ func (m *Module) RunPending() error {
 }
 
 // Down reverses the last n applied migrations in reverse version order.
-func (m *Module) Down(n int) error {
-	if m.closed.Load() {
-		return fmt.Errorf("gas-migrate: module is closed")
+func (s *Service) Down(n int) error {
+	if s.closed.Load() {
+		return fmt.Errorf("gas-migrate: service is closed")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	ctx := context.Background()
 
-	applied, err := m.getAppliedMigrations(ctx)
+	applied, err := s.getAppliedMigrations(ctx)
 	if err != nil {
 		return err
 	}
 
-	registered := m.migrationsByVersion()
+	registered := s.migrationsByVersion()
 
 	// Reverse order: most recently applied first.
 	count := n
@@ -195,7 +195,7 @@ func (m *Module) Down(n int) error {
 		if !ok {
 			return fmt.Errorf("gas-migrate: applied migration %s not found in registered migrations", a.Version)
 		}
-		if err := m.applyDown(ctx, migration); err != nil {
+		if err := s.applyDown(ctx, migration); err != nil {
 			return err
 		}
 	}
@@ -203,15 +203,15 @@ func (m *Module) Down(n int) error {
 	return nil
 }
 
-func (m *Module) applyUp(ctx context.Context, migration gas.Migration) error {
-	tx, err := m.db.DB().BeginTx(ctx, &sql.TxOptions{})
+func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
+	tx, err := s.db.DB().BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to begin transaction for %s: %w", migration.Version, err)
 	}
 
 	if _, err := tx.ExecContext(ctx, migration.Up); err != nil {
 		_ = tx.Rollback()
-		if markErr := m.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
+		if markErr := s.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
 			return fmt.Errorf("gas-migrate: migration %s failed: %w (also failed to mark dirty: %w)",
 				migration.Version, err, markErr)
 		}
@@ -219,18 +219,18 @@ func (m *Module) applyUp(ctx context.Context, migration gas.Migration) error {
 	}
 
 	if err := tx.Commit(); err != nil {
-		if markErr := m.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
+		if markErr := s.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
 			return fmt.Errorf("gas-migrate: commit failed for %s: %w (also failed to mark dirty: %w)",
 				migration.Version, err, markErr)
 		}
 		return fmt.Errorf("gas-migrate: commit failed for %s (marked dirty): %w", migration.Version, err)
 	}
 
-	return m.markApplied(ctx, migration.Version, migration.Module, migration.Description)
+	return s.markApplied(ctx, migration.Version, migration.Module, migration.Description)
 }
 
-func (m *Module) applyDown(ctx context.Context, migration gas.Migration) error {
-	tx, err := m.db.DB().BeginTx(ctx, &sql.TxOptions{})
+func (s *Service) applyDown(ctx context.Context, migration gas.Migration) error {
+	tx, err := s.db.DB().BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to begin transaction for down %s: %w", migration.Version, err)
 	}
@@ -244,16 +244,16 @@ func (m *Module) applyDown(ctx context.Context, migration gas.Migration) error {
 		return fmt.Errorf("gas-migrate: commit failed for down %s: %w", migration.Version, err)
 	}
 
-	return m.removeMigration(ctx, migration.Version)
+	return s.removeMigration(ctx, migration.Version)
 }
 
-func (m *Module) allMigrationsSorted() []gas.Migration {
+func (s *Service) allMigrationsSorted() []gas.Migration {
 	total := 0
-	for _, migs := range m.migrations {
+	for _, migs := range s.migrations {
 		total += len(migs)
 	}
 	all := make([]gas.Migration, 0, total)
-	for _, migs := range m.migrations {
+	for _, migs := range s.migrations {
 		all = append(all, migs...)
 	}
 	sort.Slice(all, func(i, j int) bool {
@@ -262,9 +262,9 @@ func (m *Module) allMigrationsSorted() []gas.Migration {
 	return all
 }
 
-func (m *Module) migrationsByVersion() map[string]gas.Migration {
+func (s *Service) migrationsByVersion() map[string]gas.Migration {
 	byVersion := make(map[string]gas.Migration)
-	for _, migs := range m.migrations {
+	for _, migs := range s.migrations {
 		for _, mig := range migs {
 			byVersion[mig.Version] = mig
 		}

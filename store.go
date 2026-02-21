@@ -17,8 +17,8 @@ type appliedMigration struct {
 	Dirty          bool
 }
 
-func (m *Module) createTrackingTable(ctx context.Context) error {
-	_, err := m.db.Exec(ctx, `
+func (s *Service) createTrackingTable(ctx context.Context) error {
+	_, err := s.db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS __gas_migrations (
 			version         TEXT PRIMARY KEY,
 			module          TEXT NOT NULL,
@@ -35,8 +35,8 @@ func (m *Module) createTrackingTable(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) getAppliedMigrations(ctx context.Context) ([]appliedMigration, error) {
-	rows, err := m.db.Query(ctx,
+func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration, error) {
+	rows, err := s.db.Query(ctx,
 		`SELECT version, module, description, migrate_version, module_version, applied_at, dirty
 		 FROM __gas_migrations ORDER BY version`)
 	if err != nil {
@@ -58,8 +58,8 @@ func (m *Module) getAppliedMigrations(ctx context.Context) ([]appliedMigration, 
 	return applied, nil
 }
 
-func (m *Module) getDirtyMigrations(ctx context.Context) ([]appliedMigration, error) {
-	rows, err := m.db.Query(ctx,
+func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, error) {
+	rows, err := s.db.Query(ctx,
 		`SELECT version, module, description, migrate_version, module_version, applied_at, dirty
 		 FROM __gas_migrations WHERE dirty = TRUE ORDER BY version`)
 	if err != nil {
@@ -81,8 +81,8 @@ func (m *Module) getDirtyMigrations(ctx context.Context) ([]appliedMigration, er
 	return dirty, nil
 }
 
-func (m *Module) markApplied(ctx context.Context, version, module, description string) error {
-	_, err := m.db.Exec(ctx,
+func (s *Service) markApplied(ctx context.Context, version, module, description string) error {
+	_, err := s.db.Exec(ctx,
 		`INSERT INTO __gas_migrations (version, module, description, migrate_version, module_version)
 		 VALUES (?, ?, ?, ?, ?)`,
 		version, module, description, migrateVersion(), resolveModuleVersion(module))
@@ -92,8 +92,8 @@ func (m *Module) markApplied(ctx context.Context, version, module, description s
 	return nil
 }
 
-func (m *Module) markDirty(ctx context.Context, version, module, description string) error {
-	_, err := m.db.Exec(ctx,
+func (s *Service) markDirty(ctx context.Context, version, module, description string) error {
+	_, err := s.db.Exec(ctx,
 		`INSERT INTO __gas_migrations (version, module, description, migrate_version, module_version, dirty)
 		 VALUES (?, ?, ?, ?, ?, TRUE)
 		 ON CONFLICT (version) DO UPDATE SET dirty = TRUE`,
@@ -104,8 +104,8 @@ func (m *Module) markDirty(ctx context.Context, version, module, description str
 	return nil
 }
 
-func (m *Module) removeMigration(ctx context.Context, version string) error {
-	_, err := m.db.Exec(ctx,
+func (s *Service) removeMigration(ctx context.Context, version string) error {
+	_, err := s.db.Exec(ctx,
 		`DELETE FROM __gas_migrations WHERE version = ?`, version)
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to remove migration %s: %w", version, err)

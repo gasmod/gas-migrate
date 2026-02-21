@@ -13,17 +13,18 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ gas.Module           = (*Module)(nil)
-	_ gas.MigrationManager = (*Module)(nil)
+	_ gas.Service          = (*Service)(nil)
+	_ gas.MigrationManager = (*Service)(nil)
 )
 
 func newTestDB(t *testing.T) gas.DatabaseProvider {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "test.db")
-	db := database.New(database.WithConfig(&database.Config{
-		Driver: "sqlite",
-		DSN:    dsn,
-	}))
+	cfg := database.DefaultConfig()
+	cfg.DatabaseDriver = database.DriverSQLite
+	cfg.DatabaseDSN = dsn
+	factory := database.New(database.WithConfig(cfg))
+	db := factory(nil)
 	if err := db.Init(); err != nil {
 		t.Fatalf("database Init: %v", err)
 	}
@@ -31,34 +32,34 @@ func newTestDB(t *testing.T) gas.DatabaseProvider {
 	return db
 }
 
-func newTestModule(t *testing.T) (*Module, gas.DatabaseProvider) {
+func newTestService(t *testing.T) (*Service, gas.DatabaseProvider) {
 	t.Helper()
 	db := newTestDB(t)
-	m := New(WithDatabaseProvider(db))
-	if err := m.Init(); err != nil {
+	s := New()(db)
+	if err := s.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	t.Cleanup(func() { m.Close() })
-	return m, db
+	t.Cleanup(func() { s.Close() })
+	return s, db
 }
 
 func TestName(t *testing.T) {
-	m := &Module{}
-	if m.Name() != "gas-migrate" {
-		t.Fatalf("expected gas-migrate, got %s", m.Name())
+	s := &Service{}
+	if s.Name() != "gas-migrate" {
+		t.Fatalf("expected gas-migrate, got %s", s.Name())
 	}
 }
 
 func TestInit_NoDB(t *testing.T) {
-	m := New()
-	if err := m.Init(); err == nil {
+	s := New()(nil)
+	if err := s.Init(); err == nil {
 		t.Fatal("expected error for missing DatabaseProvider")
 	}
 }
 
 func TestInit_CreatesTrackingTable(t *testing.T) {
-	m, db := newTestModule(t)
-	_ = m
+	s, db := newTestService(t)
+	_ = s
 
 	// Verify the table exists by querying it.
 	rows, err := db.Query(context.Background(),
@@ -70,54 +71,54 @@ func TestInit_CreatesTrackingTable(t *testing.T) {
 }
 
 func TestRegister(t *testing.T) {
-	m, _ := newTestModule(t)
-	m.Register("gas-auth", gas.Migration{
+	s, _ := newTestService(t)
+	s.Register("gas-auth", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE users",
 	})
-	m.Register("gas-auth", gas.Migration{
+	s.Register("gas-auth", gas.Migration{
 		Version:     "20250216_002",
 		Description: "create sessions table",
 		Up:          "CREATE TABLE sessions (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE sessions",
 	})
-	m.Register("gas-billing", gas.Migration{
+	s.Register("gas-billing", gas.Migration{
 		Version:     "20250217_001",
 		Description: "create plans table",
 		Up:          "CREATE TABLE plans (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE plans",
 	})
 
-	if len(m.migrations["gas-auth"]) != 2 {
-		t.Errorf("expected 2 auth migrations, got %d", len(m.migrations["gas-auth"]))
+	if len(s.migrations["gas-auth"]) != 2 {
+		t.Errorf("expected 2 auth migrations, got %d", len(s.migrations["gas-auth"]))
 	}
-	if len(m.migrations["gas-billing"]) != 1 {
-		t.Errorf("expected 1 billing migration, got %d", len(m.migrations["gas-billing"]))
+	if len(s.migrations["gas-billing"]) != 1 {
+		t.Errorf("expected 1 billing migration, got %d", len(s.migrations["gas-billing"]))
 	}
-	if m.migrations["gas-auth"][0].Module != "gas-auth" {
+	if s.migrations["gas-auth"][0].Module != "gas-auth" {
 		t.Error("expected Module field to be set on registration")
 	}
 }
 
 func TestRunPending(t *testing.T) {
-	m, db := newTestModule(t)
+	s, db := newTestService(t)
 
-	m.Register("gas-auth", gas.Migration{
+	s.Register("gas-auth", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)",
 		Down:        "DROP TABLE users",
 	})
-	m.Register("gas-billing", gas.Migration{
+	s.Register("gas-billing", gas.Migration{
 		Version:     "20250216_002",
 		Description: "create plans table",
 		Up:          "CREATE TABLE plans (id INTEGER PRIMARY KEY, name TEXT)",
 		Down:        "DROP TABLE plans",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
@@ -131,7 +132,7 @@ func TestRunPending(t *testing.T) {
 	}
 
 	// Verify tracking records.
-	applied, err := m.getAppliedMigrations(ctx)
+	applied, err := s.getAppliedMigrations(ctx)
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -147,32 +148,32 @@ func TestRunPending(t *testing.T) {
 }
 
 func TestRunPending_SkipsApplied(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "first",
 		Up:          "CREATE TABLE first_table (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE first_table",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("first RunPending: %v", err)
 	}
 
 	// Register another migration and run again.
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_002",
 		Description: "second",
 		Up:          "CREATE TABLE second_table (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE second_table",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("second RunPending: %v", err)
 	}
 
-	applied, err := m.getAppliedMigrations(context.Background())
+	applied, err := s.getAppliedMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -182,41 +183,41 @@ func TestRunPending_SkipsApplied(t *testing.T) {
 }
 
 func TestRunPending_DirtyBlocks(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
 	ctx := context.Background()
-	if err := m.markDirty(ctx, "20250216_001", "mod-a", "broken migration"); err != nil {
+	if err := s.markDirty(ctx, "20250216_001", "mod-a", "broken migration"); err != nil {
 		t.Fatalf("markDirty: %v", err)
 	}
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_002",
 		Description: "should not run",
 		Up:          "CREATE TABLE should_not_exist (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE should_not_exist",
 	})
 
-	if err := m.RunPending(); err == nil {
+	if err := s.RunPending(); err == nil {
 		t.Fatal("expected error due to dirty migration")
 	}
 }
 
 func TestRunPending_FailedMigrationMarksDirty(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "invalid SQL",
 		Up:          "THIS IS NOT VALID SQL",
 		Down:        "SELECT 1",
 	})
 
-	err := m.RunPending()
+	err := s.RunPending()
 	if err == nil {
 		t.Fatal("expected error for invalid SQL")
 	}
 
-	dirty, err := m.getDirtyMigrations(context.Background())
+	dirty, err := s.getDirtyMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getDirtyMigrations: %v", err)
 	}
@@ -229,27 +230,27 @@ func TestRunPending_FailedMigrationMarksDirty(t *testing.T) {
 }
 
 func TestDown(t *testing.T) {
-	m, db := newTestModule(t)
+	s, db := newTestService(t)
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create table a",
 		Up:          "CREATE TABLE table_a (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE table_a",
 	})
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_002",
 		Description: "create table b",
 		Up:          "CREATE TABLE table_b (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE table_b",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
 	// Roll back the last migration.
-	if err := m.Down(1); err != nil {
+	if err := s.Down(1); err != nil {
 		t.Fatalf("Down(1): %v", err)
 	}
 
@@ -266,7 +267,7 @@ func TestDown(t *testing.T) {
 		t.Fatal("table_b should have been dropped")
 	}
 
-	applied, err := m.getAppliedMigrations(ctx)
+	applied, err := s.getAppliedMigrations(ctx)
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -276,30 +277,30 @@ func TestDown(t *testing.T) {
 }
 
 func TestDown_AllMigrations(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create table",
 		Up:          "CREATE TABLE down_all (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_all",
 	})
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_002",
 		Description: "create table 2",
 		Up:          "CREATE TABLE down_all2 (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_all2",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
-	if err := m.Down(2); err != nil {
+	if err := s.Down(2); err != nil {
 		t.Fatalf("Down(2): %v", err)
 	}
 
-	applied, err := m.getAppliedMigrations(context.Background())
+	applied, err := s.getAppliedMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -309,25 +310,25 @@ func TestDown_AllMigrations(t *testing.T) {
 }
 
 func TestDown_MoreThanApplied(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create table",
 		Up:          "CREATE TABLE down_extra (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_extra",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
 	// Asking to roll back more than applied should just roll back what exists.
-	if err := m.Down(5); err != nil {
+	if err := s.Down(5); err != nil {
 		t.Fatalf("Down(5): %v", err)
 	}
 
-	applied, err := m.getAppliedMigrations(context.Background())
+	applied, err := s.getAppliedMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -337,51 +338,51 @@ func TestDown_MoreThanApplied(t *testing.T) {
 }
 
 func TestRunPending_Closed(t *testing.T) {
-	m, _ := newTestModule(t)
-	m.Close()
+	s, _ := newTestService(t)
+	s.Close()
 
-	if err := m.RunPending(); err == nil {
-		t.Fatal("expected error when module is closed")
+	if err := s.RunPending(); err == nil {
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestDown_Closed(t *testing.T) {
-	m, _ := newTestModule(t)
-	m.Close()
+	s, _ := newTestService(t)
+	s.Close()
 
-	if err := m.Down(1); err == nil {
-		t.Fatal("expected error when module is closed")
+	if err := s.Down(1); err == nil {
+		t.Fatal("expected error when service is closed")
 	}
 }
 
 func TestGlobalVersionOrder(t *testing.T) {
-	m, db := newTestModule(t)
+	s, db := newTestService(t)
 
-	// Register out of order across modules.
-	m.Register("mod-b", gas.Migration{
+	// Register out of order across services.
+	s.Register("mod-b", gas.Migration{
 		Version:     "20250216_002",
 		Description: "mod-b first",
 		Up:          "CREATE TABLE mod_b_first (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_b_first",
 	})
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_001",
 		Description: "mod-a first",
 		Up:          "CREATE TABLE mod_a_first (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_a_first",
 	})
-	m.Register("mod-a", gas.Migration{
+	s.Register("mod-a", gas.Migration{
 		Version:     "20250216_003",
 		Description: "mod-a second",
 		Up:          "CREATE TABLE mod_a_second (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_a_second",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
-	applied, err := m.getAppliedMigrations(context.Background())
+	applied, err := s.getAppliedMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}
@@ -415,9 +416,9 @@ func TestGlobalVersionOrder(t *testing.T) {
 }
 
 func TestRegisterSlice(t *testing.T) {
-	m, db := newTestModule(t)
+	s, db := newTestService(t)
 
-	m.RegisterSlice("mod-a", []gas.Migration{
+	s.RegisterSlice("mod-a", []gas.Migration{
 		{
 			Version:     "20250216_001",
 			Description: "create table x",
@@ -432,14 +433,14 @@ func TestRegisterSlice(t *testing.T) {
 		},
 	})
 
-	if len(m.migrations["mod-a"]) != 2 {
-		t.Fatalf("expected 2 migrations, got %d", len(m.migrations["mod-a"]))
+	if len(s.migrations["mod-a"]) != 2 {
+		t.Fatalf("expected 2 migrations, got %d", len(s.migrations["mod-a"]))
 	}
-	if m.migrations["mod-a"][0].Module != "mod-a" {
+	if s.migrations["mod-a"][0].Module != "mod-a" {
 		t.Error("expected Module field to be set")
 	}
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
@@ -453,7 +454,7 @@ func TestRegisterSlice(t *testing.T) {
 }
 
 func TestRegisterFS(t *testing.T) {
-	m, db := newTestModule(t)
+	s, db := newTestService(t)
 
 	fsys := fstest.MapFS{
 		"20250216_001_create_accounts.up.sql":   {Data: []byte("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)")},
@@ -462,16 +463,16 @@ func TestRegisterFS(t *testing.T) {
 		"20250216_002_create_orders.down.sql":   {Data: []byte("DROP TABLE orders")},
 	}
 
-	if err := m.RegisterFS("mod-fs", fsys); err != nil {
+	if err := s.RegisterFS("mod-fs", fsys); err != nil {
 		t.Fatalf("RegisterFS: %v", err)
 	}
 
-	if len(m.migrations["mod-fs"]) != 2 {
-		t.Fatalf("expected 2 migrations, got %d", len(m.migrations["mod-fs"]))
+	if len(s.migrations["mod-fs"]) != 2 {
+		t.Fatalf("expected 2 migrations, got %d", len(s.migrations["mod-fs"]))
 	}
 
 	// Check parsed version and description.
-	mig := m.migrations["mod-fs"][0]
+	mig := s.migrations["mod-fs"][0]
 	if mig.Version != "20250216_001" {
 		t.Errorf("version = %q, want 20250216_001", mig.Version)
 	}
@@ -482,7 +483,7 @@ func TestRegisterFS(t *testing.T) {
 		t.Errorf("module = %q, want mod-fs", mig.Module)
 	}
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
@@ -496,19 +497,19 @@ func TestRegisterFS(t *testing.T) {
 }
 
 func TestRegisterFS_MissingDown(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
 	fsys := fstest.MapFS{
 		"20250216_001_orphan.up.sql": {Data: []byte("CREATE TABLE orphan (id INTEGER PRIMARY KEY)")},
 	}
 
-	if err := m.RegisterFS("mod-fs", fsys); err == nil {
+	if err := s.RegisterFS("mod-fs", fsys); err == nil {
 		t.Fatal("expected error for missing down file")
 	}
 }
 
 func TestRegisterFS_DownOnlyIgnored(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
 	// A .down.sql without a matching .up.sql should be silently ignored
 	// (we only glob for *.up.sql).
@@ -516,30 +517,30 @@ func TestRegisterFS_DownOnlyIgnored(t *testing.T) {
 		"20250216_001_orphan.down.sql": {Data: []byte("DROP TABLE orphan")},
 	}
 
-	if err := m.RegisterFS("mod-fs", fsys); err != nil {
+	if err := s.RegisterFS("mod-fs", fsys); err != nil {
 		t.Fatalf("RegisterFS: %v", err)
 	}
 
-	if len(m.migrations["mod-fs"]) != 0 {
-		t.Fatalf("expected 0 migrations, got %d", len(m.migrations["mod-fs"]))
+	if len(s.migrations["mod-fs"]) != 0 {
+		t.Fatalf("expected 0 migrations, got %d", len(s.migrations["mod-fs"]))
 	}
 }
 
 func TestVersionColumnsStored(t *testing.T) {
-	m, _ := newTestModule(t)
+	s, _ := newTestService(t)
 
-	m.Register("gas-auth", gas.Migration{
+	s.Register("gas-auth", gas.Migration{
 		Version:     "20250216_001",
 		Description: "create table",
 		Up:          "CREATE TABLE ver_test (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE ver_test",
 	})
 
-	if err := m.RunPending(); err != nil {
+	if err := s.RunPending(); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
 
-	applied, err := m.getAppliedMigrations(context.Background())
+	applied, err := s.getAppliedMigrations(context.Background())
 	if err != nil {
 		t.Fatalf("getAppliedMigrations: %v", err)
 	}

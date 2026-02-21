@@ -1,7 +1,7 @@
 # gas-migrate
 
 Migration manager for the [Gas](https://github.com/gasmod/gas) ecosystem. Tracks and applies database migrations across
-all Gas modules with dirty-state detection and rollback support.
+all Gas services with dirty-state detection and rollback support.
 
 ## Install
 
@@ -23,22 +23,19 @@ import (
 )
 
 func main() {
-	db := database.New(database.WithConfig(&database.Config{
-		Driver: "postgres",
-		DSN:    "postgres://localhost:5432/myapp",
-	}))
-
-	migrationMgr := migrate.New(
-		migrate.WithDatabaseProvider(db),
-	)
-
 	app := gas.NewApp(
-		gas.WithModule(db),
-		gas.WithModule(migrationMgr),
-		// Pass migrationMgr to other modules so they can register migrations.
-		gas.WithModule(auth.New(
-			auth.WithMigrationManager(migrationMgr),
-		)),
+		gas.WithService[*database.Service](
+			database.New(),
+			gas.ServiceLifetimeSingleton,
+		),
+		gas.WithService[*migrate.Service](
+			migrate.New(),
+			gas.ServiceLifetimeSingleton,
+		),
+		gas.WithService[*auth.Service](
+			auth.New,
+			gas.ServiceLifetimeSingleton,
+		),
 	)
 
 	app.Run()
@@ -47,13 +44,13 @@ func main() {
 
 ### Registering migrations
 
-Modules register their migrations during `Init()`. There are three ways to register.
+Services register their migrations during `Init()`. There are three ways to register.
 
 #### Single migration
 
 ```go
-func (m *Module) Init() error {
-	m.migrationMgr.Register(m.Name(), gas.Migration{
+func (s *Service) Init() error {
+	s.migrationMgr.Register(s.Name(), gas.Migration{
 		Version:     "20250216_001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
@@ -66,22 +63,22 @@ func (m *Module) Init() error {
 #### Slice of migrations
 
 ```go
-func (m *Module) Init() error {
-	m.migrationMgr.RegisterSlice(m.Name(), []gas.Migration{
-	{
-		Version:     "20250216_001",
-		Description: "create users table",
-		Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
-		Down:        "DROP TABLE users;",
-	},
-	{
-		Version:     "20250216_002",
-		Description: "create sessions table",
-		Up:          "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INT REFERENCES users(id));",
-		Down:        "DROP TABLE sessions;",
-	},
-})
-return nil
+func (s *Service) Init() error {
+	s.migrationMgr.RegisterSlice(s.Name(), []gas.Migration{
+		{
+			Version:     "20250216_001",
+			Description: "create users table",
+			Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
+			Down:        "DROP TABLE users;",
+		},
+		{
+			Version:     "20250216_002",
+			Description: "create sessions table",
+			Up:          "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INT REFERENCES users(id));",
+			Down:        "DROP TABLE sessions;",
+		},
+	})
+	return nil
 }
 ```
 
@@ -93,8 +90,8 @@ import "embed"
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-func (m *Module) Init() error {
-	return m.migrationMgr.RegisterFS(m.Name(), migrationsFS)
+func (s *Service) Init() error {
+	return s.migrationMgr.RegisterFS(s.Name(), migrationsFS)
 }
 ```
 
@@ -124,7 +121,7 @@ err := migrationMgr.Down(2)
 ## How it works
 
 - Migrations are tracked in a `__gas_migrations` table created automatically on `Init()`.
-- `RunPending()` sorts all registered migrations globally by version across all modules and applies any that haven't
+- `RunPending()` sorts all registered migrations globally by version across all services and applies any that haven't
   been applied yet.
 - Each migration runs in its own transaction. If a migration fails, it is marked **dirty** and all further execution is
   blocked until the dirty state is manually resolved.
