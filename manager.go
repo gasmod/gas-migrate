@@ -36,8 +36,8 @@ func (s *Service) RegisterSlice(service string, migrations []gas.Migration) {
 //	{version}_{description}.up.sql   — the up (apply) SQL
 //	{version}_{description}.down.sql — the down (rollback) SQL
 //
-// The version is extracted as the YYYYMMDD_NNN prefix (digits_digits), and
-// the description is the remaining underscored segment converted to spaces.
+// The version is the first underscore-delimited segment, and the description
+// is the remaining underscored segments converted to spaces.
 // Every .up.sql file must have a matching .down.sql file.
 func (s *Service) RegisterFS(service string, fsys fs.FS) error {
 	pairs, err := parseMigrationFS(fsys)
@@ -97,23 +97,18 @@ func parseMigrationFS(fsys fs.FS) ([]migrationPair, error) {
 }
 
 // parseStem extracts version and description from a migration filename stem.
-// Given "20250216_001_create_users_table", it returns version="20250216_001"
+// Given "20250216001_create_users_table", it returns version="20250216001"
 // and description="create users table".
 func parseStem(stem string) (version, description string) {
 	// Strip any directory prefix.
 	stem = filepath.Base(stem)
 
-	// Split into parts by underscore.
-	parts := strings.Split(stem, "_")
-
-	// The version is the first two underscore-separated segments (YYYYMMDD_NNN).
-	if len(parts) < 2 {
-		return stem, ""
-	}
-
-	version = parts[0] + "_" + parts[1]
-	if len(parts) > 2 {
-		description = strings.Join(parts[2:], " ")
+	// The version is the first underscore-delimited segment.
+	if idx := strings.IndexByte(stem, '_'); idx >= 0 {
+		version = stem[:idx]
+		description = strings.ReplaceAll(stem[idx+1:], "_", " ")
+	} else {
+		version = stem
 	}
 	return version, description
 }
@@ -151,7 +146,10 @@ func (s *Service) RunPending() error {
 		appliedSet[a.Version] = struct{}{}
 	}
 
-	all := s.allMigrationsSorted()
+	all, err := s.allMigrationsSorted()
+	if err != nil {
+		return err
+	}
 
 	for _, migration := range all {
 		if _, ok := appliedSet[migration.Version]; ok {
@@ -181,7 +179,10 @@ func (s *Service) Down(n int) error {
 		return err
 	}
 
-	registered := s.migrationsByVersion()
+	registered, err := s.migrationsByVersion()
+	if err != nil {
+		return err
+	}
 
 	// Reverse order: most recently applied first.
 	count := n
@@ -247,7 +248,7 @@ func (s *Service) applyDown(ctx context.Context, migration gas.Migration) error 
 	return s.removeMigration(ctx, migration.Version)
 }
 
-func (s *Service) allMigrationsSorted() []gas.Migration {
+func (s *Service) allMigrationsSorted() ([]gas.Migration, error) {
 	total := 0
 	for _, migs := range s.migrations {
 		total += len(migs)
@@ -256,18 +257,33 @@ func (s *Service) allMigrationsSorted() []gas.Migration {
 	for _, migs := range s.migrations {
 		all = append(all, migs...)
 	}
+
+	// Check for duplicate versions across services.
+	seen := make(map[string]string, len(all)) // version → service
+	for _, mig := range all {
+		if owner, ok := seen[mig.Version]; ok && owner != mig.Service {
+			return nil, fmt.Errorf("gas-migrate: duplicate migration version %q registered by services %q and %q",
+				mig.Version, owner, mig.Service)
+		}
+		seen[mig.Version] = mig.Service
+	}
+
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].Version < all[j].Version
 	})
-	return all
+	return all, nil
 }
 
-func (s *Service) migrationsByVersion() map[string]gas.Migration {
+func (s *Service) migrationsByVersion() (map[string]gas.Migration, error) {
 	byVersion := make(map[string]gas.Migration)
 	for _, migs := range s.migrations {
 		for _, mig := range migs {
+			if existing, ok := byVersion[mig.Version]; ok && existing.Service != mig.Service {
+				return nil, fmt.Errorf("gas-migrate: duplicate migration version %q registered by services %q and %q",
+					mig.Version, existing.Service, mig.Service)
+			}
 			byVersion[mig.Version] = mig
 		}
 	}
-	return byVersion
+	return byVersion, nil
 }

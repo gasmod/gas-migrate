@@ -51,7 +51,7 @@ Services register their migrations during `Init()`. There are three ways to regi
 ```go
 func (s *Service) Init() error {
 	s.migrationMgr.Register(s.Name(), gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
 		Down:        "DROP TABLE users;",
@@ -66,13 +66,13 @@ func (s *Service) Init() error {
 func (s *Service) Init() error {
 	s.migrationMgr.RegisterSlice(s.Name(), []gas.Migration{
 		{
-			Version:     "20250216_001",
+			Version:     "20250216001",
 			Description: "create users table",
 			Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
 			Down:        "DROP TABLE users;",
 		},
 		{
-			Version:     "20250216_002",
+			Version:     "20250216002",
 			Description: "create sessions table",
 			Up:          "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id INT REFERENCES users(id));",
 			Down:        "DROP TABLE sessions;",
@@ -99,14 +99,14 @@ Files must follow this naming convention:
 
 ```
 migrations/
-    20250216_001_create_users.up.sql
-    20250216_001_create_users.down.sql
-    20250216_002_create_sessions.up.sql
-    20250216_002_create_sessions.down.sql
+    20250216001_create_users.up.sql
+    20250216001_create_users.down.sql
+    20250216002_create_sessions.up.sql
+    20250216002_create_sessions.down.sql
 ```
 
-The version is the `YYYYMMDD_NNN` prefix, and the description is parsed from the remaining segments (underscores become
-spaces).
+The version is the first underscore-delimited segment (e.g. `20250216001`), and the description is parsed from the
+remaining segments (underscores become spaces).
 
 ### Running migrations
 
@@ -126,6 +126,8 @@ err := migrationMgr.Down(2)
 - Each migration runs in its own transaction. If a migration fails, it is marked **dirty** and all further execution is
   blocked until the dirty state is manually resolved.
 - `Down(n)` reverses the last `n` applied migrations in reverse version order.
+- **Version collision detection**: If two services register migrations with the same version, `RunPending()` and `Down()`
+  return an error identifying the conflicting version and both service names.
 
 ## Dirty migrations
 

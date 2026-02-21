@@ -3,6 +3,7 @@ package migrate
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -73,19 +74,19 @@ func TestInit_CreatesTrackingTable(t *testing.T) {
 func TestRegister(t *testing.T) {
 	s, _ := newTestService(t)
 	s.Register("gas-auth", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE users",
 	})
 	s.Register("gas-auth", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "create sessions table",
 		Up:          "CREATE TABLE sessions (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE sessions",
 	})
 	s.Register("gas-billing", gas.Migration{
-		Version:     "20250217_001",
+		Version:     "20250217001",
 		Description: "create plans table",
 		Up:          "CREATE TABLE plans (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE plans",
@@ -106,13 +107,13 @@ func TestRunPending(t *testing.T) {
 	s, db := newTestService(t)
 
 	s.Register("gas-auth", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create users table",
 		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)",
 		Down:        "DROP TABLE users",
 	})
 	s.Register("gas-billing", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "create plans table",
 		Up:          "CREATE TABLE plans (id INTEGER PRIMARY KEY, name TEXT)",
 		Down:        "DROP TABLE plans",
@@ -139,10 +140,10 @@ func TestRunPending(t *testing.T) {
 	if len(applied) != 2 {
 		t.Fatalf("expected 2 applied migrations, got %d", len(applied))
 	}
-	if applied[0].Version != "20250216_001" {
+	if applied[0].Version != "20250216001" {
 		t.Errorf("first applied = %s, want 20250216_001", applied[0].Version)
 	}
-	if applied[1].Version != "20250216_002" {
+	if applied[1].Version != "20250216002" {
 		t.Errorf("second applied = %s, want 20250216_002", applied[1].Version)
 	}
 }
@@ -151,7 +152,7 @@ func TestRunPending_SkipsApplied(t *testing.T) {
 	s, _ := newTestService(t)
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "first",
 		Up:          "CREATE TABLE first_table (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE first_table",
@@ -163,7 +164,7 @@ func TestRunPending_SkipsApplied(t *testing.T) {
 
 	// Register another migration and run again.
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "second",
 		Up:          "CREATE TABLE second_table (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE second_table",
@@ -186,12 +187,12 @@ func TestRunPending_DirtyBlocks(t *testing.T) {
 	s, _ := newTestService(t)
 
 	ctx := context.Background()
-	if err := s.markDirty(ctx, "20250216_001", "mod-a", "broken migration"); err != nil {
+	if err := s.markDirty(ctx, "20250216001", "mod-a", "broken migration"); err != nil {
 		t.Fatalf("markDirty: %v", err)
 	}
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "should not run",
 		Up:          "CREATE TABLE should_not_exist (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE should_not_exist",
@@ -206,7 +207,7 @@ func TestRunPending_FailedMigrationMarksDirty(t *testing.T) {
 	s, _ := newTestService(t)
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "invalid SQL",
 		Up:          "THIS IS NOT VALID SQL",
 		Down:        "SELECT 1",
@@ -224,7 +225,7 @@ func TestRunPending_FailedMigrationMarksDirty(t *testing.T) {
 	if len(dirty) != 1 {
 		t.Fatalf("expected 1 dirty migration, got %d", len(dirty))
 	}
-	if dirty[0].Version != "20250216_001" {
+	if dirty[0].Version != "20250216001" {
 		t.Errorf("dirty version = %s, want 20250216_001", dirty[0].Version)
 	}
 }
@@ -233,13 +234,13 @@ func TestDown(t *testing.T) {
 	s, db := newTestService(t)
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create table a",
 		Up:          "CREATE TABLE table_a (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE table_a",
 	})
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "create table b",
 		Up:          "CREATE TABLE table_b (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE table_b",
@@ -280,13 +281,13 @@ func TestDown_AllMigrations(t *testing.T) {
 	s, _ := newTestService(t)
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create table",
 		Up:          "CREATE TABLE down_all (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_all",
 	})
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "create table 2",
 		Up:          "CREATE TABLE down_all2 (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_all2",
@@ -313,7 +314,7 @@ func TestDown_MoreThanApplied(t *testing.T) {
 	s, _ := newTestService(t)
 
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create table",
 		Up:          "CREATE TABLE down_extra (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE down_extra",
@@ -360,19 +361,19 @@ func TestGlobalVersionOrder(t *testing.T) {
 
 	// Register out of order across services.
 	s.Register("mod-b", gas.Migration{
-		Version:     "20250216_002",
+		Version:     "20250216002",
 		Description: "mod-b first",
 		Up:          "CREATE TABLE mod_b_first (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_b_first",
 	})
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "mod-a first",
 		Up:          "CREATE TABLE mod_a_first (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_a_first",
 	})
 	s.Register("mod-a", gas.Migration{
-		Version:     "20250216_003",
+		Version:     "20250216003",
 		Description: "mod-a second",
 		Up:          "CREATE TABLE mod_a_second (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE mod_a_second",
@@ -395,9 +396,9 @@ func TestGlobalVersionOrder(t *testing.T) {
 		version string
 		service string
 	}{
-		{"20250216_001", "mod-a"},
-		{"20250216_002", "mod-b"},
-		{"20250216_003", "mod-a"},
+		{"20250216001", "mod-a"},
+		{"20250216002", "mod-b"},
+		{"20250216003", "mod-a"},
 	}
 	for i, exp := range expected {
 		if applied[i].Version != exp.version || applied[i].Service != exp.service {
@@ -420,13 +421,13 @@ func TestRegisterSlice(t *testing.T) {
 
 	s.RegisterSlice("mod-a", []gas.Migration{
 		{
-			Version:     "20250216_001",
+			Version:     "20250216001",
 			Description: "create table x",
 			Up:          "CREATE TABLE table_x (id INTEGER PRIMARY KEY)",
 			Down:        "DROP TABLE table_x",
 		},
 		{
-			Version:     "20250216_002",
+			Version:     "20250216002",
 			Description: "create table y",
 			Up:          "CREATE TABLE table_y (id INTEGER PRIMARY KEY)",
 			Down:        "DROP TABLE table_y",
@@ -457,10 +458,10 @@ func TestRegisterFS(t *testing.T) {
 	s, db := newTestService(t)
 
 	fsys := fstest.MapFS{
-		"20250216_001_create_accounts.up.sql":   {Data: []byte("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)")},
-		"20250216_001_create_accounts.down.sql": {Data: []byte("DROP TABLE accounts")},
-		"20250216_002_create_orders.up.sql":     {Data: []byte("CREATE TABLE orders (id INTEGER PRIMARY KEY, total INTEGER)")},
-		"20250216_002_create_orders.down.sql":   {Data: []byte("DROP TABLE orders")},
+		"20250216001_create_accounts.up.sql":   {Data: []byte("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)")},
+		"20250216001_create_accounts.down.sql": {Data: []byte("DROP TABLE accounts")},
+		"20250216002_create_orders.up.sql":     {Data: []byte("CREATE TABLE orders (id INTEGER PRIMARY KEY, total INTEGER)")},
+		"20250216002_create_orders.down.sql":   {Data: []byte("DROP TABLE orders")},
 	}
 
 	if err := s.RegisterFS("mod-fs", fsys); err != nil {
@@ -473,7 +474,7 @@ func TestRegisterFS(t *testing.T) {
 
 	// Check parsed version and description.
 	mig := s.migrations["mod-fs"][0]
-	if mig.Version != "20250216_001" {
+	if mig.Version != "20250216001" {
 		t.Errorf("version = %q, want 20250216_001", mig.Version)
 	}
 	if mig.Description != "create accounts" {
@@ -500,7 +501,7 @@ func TestRegisterFS_MissingDown(t *testing.T) {
 	s, _ := newTestService(t)
 
 	fsys := fstest.MapFS{
-		"20250216_001_orphan.up.sql": {Data: []byte("CREATE TABLE orphan (id INTEGER PRIMARY KEY)")},
+		"20250216001_orphan.up.sql": {Data: []byte("CREATE TABLE orphan (id INTEGER PRIMARY KEY)")},
 	}
 
 	if err := s.RegisterFS("mod-fs", fsys); err == nil {
@@ -514,7 +515,7 @@ func TestRegisterFS_DownOnlyIgnored(t *testing.T) {
 	// A .down.sql without a matching .up.sql should be silently ignored
 	// (we only glob for *.up.sql).
 	fsys := fstest.MapFS{
-		"20250216_001_orphan.down.sql": {Data: []byte("DROP TABLE orphan")},
+		"20250216001_orphan.down.sql": {Data: []byte("DROP TABLE orphan")},
 	}
 
 	if err := s.RegisterFS("mod-fs", fsys); err != nil {
@@ -530,7 +531,7 @@ func TestVersionColumnsStored(t *testing.T) {
 	s, _ := newTestService(t)
 
 	s.Register("gas-auth", gas.Migration{
-		Version:     "20250216_001",
+		Version:     "20250216001",
 		Description: "create table",
 		Up:          "CREATE TABLE ver_test (id INTEGER PRIMARY KEY)",
 		Down:        "DROP TABLE ver_test",
@@ -561,9 +562,9 @@ func TestParseStem(t *testing.T) {
 		wantVersion string
 		wantDesc    string
 	}{
-		{"20250216_001_create_users", "20250216_001", "create users"},
-		{"20250216_002_add_email_to_users", "20250216_002", "add email to users"},
-		{"20250216_003", "20250216_003", ""},
+		{"20250216001_create_users", "20250216001", "create users"},
+		{"20250216002_add_email_to_users", "20250216002", "add email to users"},
+		{"20250216003", "20250216003", ""},
 		{"single", "single", ""},
 	}
 
@@ -573,5 +574,61 @@ func TestParseStem(t *testing.T) {
 			t.Errorf("parseStem(%q) = (%q, %q), want (%q, %q)",
 				tt.stem, version, desc, tt.wantVersion, tt.wantDesc)
 		}
+	}
+}
+
+func TestRunPending_DuplicateVersion(t *testing.T) {
+	s, _ := newTestService(t)
+
+	s.Register("service-a", gas.Migration{
+		Version:     "20250216001",
+		Description: "create users table",
+		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE users",
+	})
+	s.Register("service-b", gas.Migration{
+		Version:     "20250216001",
+		Description: "create posts table",
+		Up:          "CREATE TABLE posts (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE posts",
+	})
+
+	err := s.RunPending()
+	if err == nil {
+		t.Fatal("expected error for duplicate version across services")
+	}
+	if !strings.Contains(err.Error(), "duplicate migration version") {
+		t.Errorf("expected duplicate version error, got: %v", err)
+	}
+}
+
+func TestDown_DuplicateVersion(t *testing.T) {
+	s, _ := newTestService(t)
+
+	s.Register("service-a", gas.Migration{
+		Version:     "20250216001",
+		Description: "create users table",
+		Up:          "CREATE TABLE users (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE users",
+	})
+
+	if err := s.RunPending(); err != nil {
+		t.Fatalf("RunPending: %v", err)
+	}
+
+	// Now register a conflicting migration from another service.
+	s.Register("service-b", gas.Migration{
+		Version:     "20250216001",
+		Description: "create posts table",
+		Up:          "CREATE TABLE posts (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE posts",
+	})
+
+	err := s.Down(1)
+	if err == nil {
+		t.Fatal("expected error for duplicate version across services")
+	}
+	if !strings.Contains(err.Error(), "duplicate migration version") {
+		t.Errorf("expected duplicate version error, got: %v", err)
 	}
 }

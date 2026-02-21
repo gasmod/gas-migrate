@@ -66,7 +66,7 @@ func (s *Service) Down(n int) error   // reverse last n applied in reverse versi
 
 ```go
 type Migration struct {
-    Version     string  // e.g. "20250216_001"
+    Version     string  // e.g. "20250216001"
     Service      string  // owning service name
     Description string  // human-readable
     Up          string  // apply SQL
@@ -76,15 +76,19 @@ type Migration struct {
 
 ## Version Naming Convention
 
-Format: `YYYYMMDD_NNN` — date prefix + sequence number.
+Format: `YYYYMMDDNNN` — date prefix + sequence number as a single segment (no
+underscore separator).
 
 ```
-20250216_001  — first migration on Feb 16, 2025
-20250216_002  — second migration same day
-20250301_001  — first migration on Mar 1, 2025
+20250216001  — first migration on Feb 16, 2025
+20250216002  — second migration same day
+20250301001  — first migration on Mar 1, 2025
 ```
 
-Migrations are sorted globally by version across all services.
+Migrations are sorted globally by version across all services. **Versions must
+be unique across all services.** If two services register the same version,
+`RunPending()` and `Down()` return an error identifying the conflicting version
+and both service names.
 
 ## Embedded SQL Files (RegisterFS)
 
@@ -92,14 +96,15 @@ File naming: `{version}_{description}.up.sql` / `{version}_{description}.down.sq
 
 ```
 migrations/
-    20250216_001_create_users.up.sql
-    20250216_001_create_users.down.sql
-    20250216_002_create_sessions.up.sql
-    20250216_002_create_sessions.down.sql
+    20250216001_create_users.up.sql
+    20250216001_create_users.down.sql
+    20250216002_create_sessions.up.sql
+    20250216002_create_sessions.down.sql
 ```
 
-Version is the `YYYYMMDD_NNN` prefix. Description is parsed from remaining
-segments (underscores → spaces). Every `.up.sql` must have a matching `.down.sql`.
+Version is the first underscore-delimited segment (e.g. `20250216001`).
+Description is parsed from remaining segments (underscores → spaces). Every
+`.up.sql` must have a matching `.down.sql`.
 
 Usage with `embed`:
 
@@ -122,6 +127,8 @@ func (s *Service) Init() error {
 - If a migration fails, it is marked **dirty** — all further execution is
   blocked until the dirty state is manually resolved.
 - `Down(n)` reverses the last `n` applied migrations in reverse version order.
+- **Version collision detection**: duplicate versions across services cause
+  `RunPending()` and `Down()` to return an error.
 
 ## Dirty State Resolution
 
@@ -168,7 +175,7 @@ func New(mgr gas.MigrationManager, router *gas.Router) *Service {
 func (s *Service) Init() error {
     s.migrationMgr.RegisterSlice(s.Name(), []gas.Migration{
         {
-            Version:     "20250216_001",
+            Version:     "20250216001",
             Description: "create users table",
             Up:          "CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT NOT NULL);",
             Down:        "DROP TABLE users;",
