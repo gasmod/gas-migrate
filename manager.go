@@ -13,25 +13,25 @@ import (
 )
 
 // Register adds a migration owned by the given service.
-func (s *Service) Register(module string, migration gas.Migration) {
+func (s *Service) Register(service string, migration gas.Migration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	migration.Module = module
-	s.migrations[module] = append(s.migrations[module], migration)
+	migration.Service = service
+	s.migrations[service] = append(s.migrations[service], migration)
 }
 
 // RegisterSlice adds multiple migrations at once for the given service.
-func (s *Service) RegisterSlice(module string, migrations []gas.Migration) {
+func (s *Service) RegisterSlice(service string, migrations []gas.Migration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, migration := range migrations {
-		migration.Module = module
-		s.migrations[module] = append(s.migrations[module], migration)
+		migration.Service = service
+		s.migrations[service] = append(s.migrations[service], migration)
 	}
 }
 
 // RegisterFS reads migration files from an fs.FS and registers them for the
-// given module. Files must follow the naming convention:
+// given service. Files must follow the naming convention:
 //
 //	{version}_{description}.up.sql   — the up (apply) SQL
 //	{version}_{description}.down.sql — the down (rollback) SQL
@@ -39,7 +39,7 @@ func (s *Service) RegisterSlice(module string, migrations []gas.Migration) {
 // The version is extracted as the YYYYMMDD_NNN prefix (digits_digits), and
 // the description is the remaining underscored segment converted to spaces.
 // Every .up.sql file must have a matching .down.sql file.
-func (s *Service) RegisterFS(module string, fsys fs.FS) error {
+func (s *Service) RegisterFS(service string, fsys fs.FS) error {
 	pairs, err := parseMigrationFS(fsys)
 	if err != nil {
 		return fmt.Errorf("gas-migrate: %w", err)
@@ -48,8 +48,8 @@ func (s *Service) RegisterFS(module string, fsys fs.FS) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, p := range pairs {
-		p.migration.Module = module
-		s.migrations[module] = append(s.migrations[module], p.migration)
+		p.migration.Service = service
+		s.migrations[service] = append(s.migrations[service], p.migration)
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
 
 	if _, err := tx.ExecContext(ctx, migration.Up); err != nil {
 		_ = tx.Rollback()
-		if markErr := s.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
+		if markErr := s.markDirty(ctx, migration.Version, migration.Service, migration.Description); markErr != nil {
 			return fmt.Errorf("gas-migrate: migration %s failed: %w (also failed to mark dirty: %w)",
 				migration.Version, err, markErr)
 		}
@@ -219,14 +219,14 @@ func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
 	}
 
 	if err := tx.Commit(); err != nil {
-		if markErr := s.markDirty(ctx, migration.Version, migration.Module, migration.Description); markErr != nil {
+		if markErr := s.markDirty(ctx, migration.Version, migration.Service, migration.Description); markErr != nil {
 			return fmt.Errorf("gas-migrate: commit failed for %s: %w (also failed to mark dirty: %w)",
 				migration.Version, err, markErr)
 		}
 		return fmt.Errorf("gas-migrate: commit failed for %s (marked dirty): %w", migration.Version, err)
 	}
 
-	return s.markApplied(ctx, migration.Version, migration.Module, migration.Description)
+	return s.markApplied(ctx, migration.Version, migration.Service, migration.Description)
 }
 
 func (s *Service) applyDown(ctx context.Context, migration gas.Migration) error {

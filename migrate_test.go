@@ -97,8 +97,8 @@ func TestRegister(t *testing.T) {
 	if len(s.migrations["gas-billing"]) != 1 {
 		t.Errorf("expected 1 billing migration, got %d", len(s.migrations["gas-billing"]))
 	}
-	if s.migrations["gas-auth"][0].Module != "gas-auth" {
-		t.Error("expected Module field to be set on registration")
+	if s.migrations["gas-auth"][0].Service != "gas-auth" {
+		t.Error("expected Service field to be set on registration")
 	}
 }
 
@@ -393,16 +393,16 @@ func TestGlobalVersionOrder(t *testing.T) {
 	// Verify order: 001 (mod-a), 002 (mod-b), 003 (mod-a).
 	expected := []struct {
 		version string
-		module  string
+		service string
 	}{
 		{"20250216_001", "mod-a"},
 		{"20250216_002", "mod-b"},
 		{"20250216_003", "mod-a"},
 	}
 	for i, exp := range expected {
-		if applied[i].Version != exp.version || applied[i].Module != exp.module {
+		if applied[i].Version != exp.version || applied[i].Service != exp.service {
 			t.Errorf("applied[%d] = (%s, %s), want (%s, %s)",
-				i, applied[i].Version, applied[i].Module, exp.version, exp.module)
+				i, applied[i].Version, applied[i].Service, exp.version, exp.service)
 		}
 	}
 
@@ -436,8 +436,8 @@ func TestRegisterSlice(t *testing.T) {
 	if len(s.migrations["mod-a"]) != 2 {
 		t.Fatalf("expected 2 migrations, got %d", len(s.migrations["mod-a"]))
 	}
-	if s.migrations["mod-a"][0].Module != "mod-a" {
-		t.Error("expected Module field to be set")
+	if s.migrations["mod-a"][0].Service != "mod-a" {
+		t.Error("expected Service field to be set")
 	}
 
 	if err := s.RunPending(); err != nil {
@@ -479,8 +479,8 @@ func TestRegisterFS(t *testing.T) {
 	if mig.Description != "create accounts" {
 		t.Errorf("description = %q, want 'create accounts'", mig.Description)
 	}
-	if mig.Module != "mod-fs" {
-		t.Errorf("module = %q, want mod-fs", mig.Module)
+	if mig.Service != "mod-fs" {
+		t.Errorf("service = %q, want mod-fs", mig.Service)
 	}
 
 	if err := s.RunPending(); err != nil {
@@ -549,7 +549,7 @@ func TestVersionColumnsStored(t *testing.T) {
 	}
 
 	// In tests, build info may not resolve versions (go test doesn't embed
-	// full module versions), so we just verify the columns are scannable
+	// full service versions), so we just verify the columns are scannable
 	// and don't panic. The values will be empty strings in test context.
 	_ = applied[0].MigrateVersion
 	_ = applied[0].ModuleVersion

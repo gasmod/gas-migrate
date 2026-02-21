@@ -10,7 +10,7 @@ import (
 type appliedMigration struct {
 	AppliedAt      time.Time
 	Version        string
-	Module         string
+	Service        string
 	Description    string
 	MigrateVersion string
 	ModuleVersion  string
@@ -21,7 +21,7 @@ func (s *Service) createTrackingTable(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS __gas_migrations (
 			version         TEXT PRIMARY KEY,
-			module          TEXT NOT NULL,
+			service          TEXT NOT NULL,
 			description     TEXT NOT NULL DEFAULT '',
 			migrate_version TEXT NOT NULL DEFAULT '',
 			module_version  TEXT NOT NULL DEFAULT '',
@@ -37,7 +37,7 @@ func (s *Service) createTrackingTable(ctx context.Context) error {
 
 func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT version, module, description, migrate_version, module_version, applied_at, dirty
+		`SELECT version, service, description, migrate_version, module_version, applied_at, dirty
 		 FROM __gas_migrations ORDER BY version`)
 	if err != nil {
 		return nil, fmt.Errorf("gas-migrate: failed to query applied migrations: %w", err)
@@ -47,7 +47,7 @@ func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration,
 	var applied []appliedMigration
 	for rows.Next() {
 		var a appliedMigration
-		if err := rows.Scan(&a.Version, &a.Module, &a.Description, &a.MigrateVersion, &a.ModuleVersion, &a.AppliedAt, &a.Dirty); err != nil {
+		if err := rows.Scan(&a.Version, &a.Service, &a.Description, &a.MigrateVersion, &a.ModuleVersion, &a.AppliedAt, &a.Dirty); err != nil {
 			return nil, fmt.Errorf("gas-migrate: failed to scan migration row: %w", err)
 		}
 		applied = append(applied, a)
@@ -60,7 +60,7 @@ func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration,
 
 func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT version, module, description, migrate_version, module_version, applied_at, dirty
+		`SELECT version, service, description, migrate_version, module_version, applied_at, dirty
 		 FROM __gas_migrations WHERE dirty = TRUE ORDER BY version`)
 	if err != nil {
 		return nil, fmt.Errorf("gas-migrate: failed to query dirty migrations: %w", err)
@@ -70,7 +70,7 @@ func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, e
 	var dirty []appliedMigration
 	for rows.Next() {
 		var a appliedMigration
-		if err := rows.Scan(&a.Version, &a.Module, &a.Description, &a.MigrateVersion, &a.ModuleVersion, &a.AppliedAt, &a.Dirty); err != nil {
+		if err := rows.Scan(&a.Version, &a.Service, &a.Description, &a.MigrateVersion, &a.ModuleVersion, &a.AppliedAt, &a.Dirty); err != nil {
 			return nil, fmt.Errorf("gas-migrate: failed to scan dirty migration row: %w", err)
 		}
 		dirty = append(dirty, a)
@@ -81,23 +81,23 @@ func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, e
 	return dirty, nil
 }
 
-func (s *Service) markApplied(ctx context.Context, version, module, description string) error {
+func (s *Service) markApplied(ctx context.Context, version, service, description string) error {
 	_, err := s.db.Exec(ctx,
-		`INSERT INTO __gas_migrations (version, module, description, migrate_version, module_version)
+		`INSERT INTO __gas_migrations (version, service, description, migrate_version, module_version)
 		 VALUES (?, ?, ?, ?, ?)`,
-		version, module, description, migrateVersion(), resolveModuleVersion(module))
+		version, service, description, migrateVersion(), resolveModuleVersion(service))
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to mark migration %s applied: %w", version, err)
 	}
 	return nil
 }
 
-func (s *Service) markDirty(ctx context.Context, version, module, description string) error {
+func (s *Service) markDirty(ctx context.Context, version, service, description string) error {
 	_, err := s.db.Exec(ctx,
-		`INSERT INTO __gas_migrations (version, module, description, migrate_version, module_version, dirty)
+		`INSERT INTO __gas_migrations (version, service, description, migrate_version, module_version, dirty)
 		 VALUES (?, ?, ?, ?, ?, TRUE)
 		 ON CONFLICT (version) DO UPDATE SET dirty = TRUE`,
-		version, module, description, migrateVersion(), resolveModuleVersion(module))
+		version, service, description, migrateVersion(), resolveModuleVersion(service))
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to mark migration %s dirty: %w", version, err)
 	}

@@ -11,7 +11,7 @@ const ownModulePath = "github.com/gasmod/gas-migrate"
 // buildInfo caches the parsed build info on first access.
 var (
 	buildInfoOnce sync.Once
-	depVersions   map[string]string // module path → version
+	depVersions   map[string]string // service path → version
 	selfVersion   string
 )
 
@@ -33,7 +33,7 @@ func loadBuildInfo() {
 			}
 			depVersions[path] = ver
 		}
-		// If we are the main module (unlikely but possible in tests).
+		// If we are the main service (unlikely but possible in tests).
 		if info.Main.Path == ownModulePath {
 			selfVersion = info.Main.Version
 			return
@@ -48,9 +48,9 @@ func migrateVersion() string {
 	return selfVersion
 }
 
-// resolveModuleVersion attempts to find the Go module version for a Gas
-// module name (e.g. "gas-auth"). It searches build info deps for a path
-// ending with the module name. Returns empty string if not found.
+// resolveModuleVersion attempts to find the Go service version for a Gas
+// service name (e.g. "gas-auth"). It searches build info deps for a path
+// ending with the service name. Returns empty string if not found.
 func resolveModuleVersion(moduleName string) string {
 	loadBuildInfo()
 	for path, ver := range depVersions {
