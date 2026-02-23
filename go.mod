@@ -3,15 +3,15 @@ module github.com/gasmod/gas-migrate
 go 1.25.6
 
 require (
-	github.com/gasmod/gas v0.1.4
-	github.com/gasmod/gas-database v0.1.0
+	github.com/gasmod/gas v0.1.11
+	github.com/gasmod/gas-database v0.1.2
 	modernc.org/sqlite v1.46.1
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gasmod/gas-config v0.1.1 // indirect
+	github.com/gasmod/gas-config v0.1.4 // indirect
 	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
