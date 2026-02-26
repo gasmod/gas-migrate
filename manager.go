@@ -155,8 +155,8 @@ func (s *Service) RunPending() error {
 		if _, ok := appliedSet[migration.Version]; ok {
 			continue
 		}
-		if err := s.applyUp(ctx, migration); err != nil {
-			return err
+		if mErr := s.applyUp(ctx, migration); mErr != nil {
+			return fmt.Errorf("gas-migrate: failed to apply migration %s: %w", migration.Version, mErr)
 		}
 	}
 
