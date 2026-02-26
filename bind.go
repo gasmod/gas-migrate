@@ -21,14 +21,6 @@ var driverBindingType = map[string]int{
 	"sqlite":   bindTypeQuestionMark,
 }
 
-func (s *Service) Query(db gas.DatabaseProvider, ctx context.Context, query string, args ...any) (gas.Rows, error) {
-	return db.Query(ctx, rebind(db.Driver(), query), args...)
-}
-
-func (s *Service) Exec(db gas.DatabaseProvider, ctx context.Context, query string, args ...any) (gas.Result, error) {
-	return db.Exec(ctx, rebind(db.Driver(), query), args...)
-}
-
 func getDriverBindingType(driver string) int {
 	bindingType, ok := driverBindingType[driver]
 	if !ok {
@@ -57,4 +49,16 @@ func rebind(driver, query string) string {
 		}
 	}
 	return b.String()
+}
+
+//nolint:revive // intentional
+func (s *Service) query(db gas.DatabaseProvider, ctx context.Context, query string, args ...any) (gas.Rows, error) {
+	//nolint:wrapcheck // intentional
+	return db.Query(ctx, rebind(db.Driver(), query), args...)
+}
+
+//nolint:revive // intentional
+func (s *Service) exec(db gas.DatabaseProvider, ctx context.Context, query string, args ...any) (gas.Result, error) {
+	//nolint:wrapcheck // intentional
+	return db.Exec(ctx, rebind(db.Driver(), query), args...)
 }

@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/gasmod/gas v0.1.22
-	github.com/gasmod/gas-database v0.1.2
+	github.com/gasmod/gas-database v0.1.4
 	modernc.org/sqlite v1.46.1
 )
 

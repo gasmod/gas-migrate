@@ -18,17 +18,7 @@ type appliedMigration struct {
 }
 
 func (s *Service) createTrackingTable(ctx context.Context) error {
-	_, err := s.Exec(s.db, ctx, `
-		CREATE TABLE IF NOT EXISTS __gas_migrations (
-			version         TEXT PRIMARY KEY,
-			service          TEXT NOT NULL,
-			description     TEXT NOT NULL DEFAULT '',
-			migrate_version TEXT NOT NULL DEFAULT '',
-			module_version  TEXT NOT NULL DEFAULT '',
-			applied_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			dirty           BOOLEAN NOT NULL DEFAULT FALSE
-		)
-	`)
+	_, err := s.exec(s.db, ctx, createTrackingTableQuery)
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to create tracking table: %w", err)
 	}
@@ -36,9 +26,7 @@ func (s *Service) createTrackingTable(ctx context.Context) error {
 }
 
 func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration, error) {
-	rows, err := s.Query(s.db, ctx,
-		`SELECT version, service, description, migrate_version, module_version, applied_at, dirty
-		 FROM __gas_migrations ORDER BY version`)
+	rows, err := s.query(s.db, ctx, getAppliedMigrationsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("gas-migrate: failed to query applied migrations: %w", err)
 	}
@@ -59,9 +47,7 @@ func (s *Service) getAppliedMigrations(ctx context.Context) ([]appliedMigration,
 }
 
 func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, error) {
-	rows, err := s.Query(s.db, ctx,
-		`SELECT version, service, description, migrate_version, module_version, applied_at, dirty
-		 FROM __gas_migrations WHERE dirty = TRUE ORDER BY version`)
+	rows, err := s.query(s.db, ctx, getDirtyMigrationsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("gas-migrate: failed to query dirty migrations: %w", err)
 	}
@@ -82,10 +68,7 @@ func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, e
 }
 
 func (s *Service) markApplied(ctx context.Context, version, service, description string) error {
-	_, err := s.Exec(s.db, ctx,
-		`INSERT INTO __gas_migrations (version, service, description, migrate_version, module_version)
-		 VALUES (?, ?, ?, ?, ?)`,
-		version, service, description, migrateVersion(), resolveModuleVersion(service))
+	_, err := s.exec(s.db, ctx, markMigrationAppliedQuery, version, service, description, migrateVersion(), resolveModuleVersion(service))
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to mark migration %s applied: %w", version, err)
 	}
@@ -93,11 +76,7 @@ func (s *Service) markApplied(ctx context.Context, version, service, description
 }
 
 func (s *Service) markDirty(ctx context.Context, version, service, description string) error {
-	_, err := s.Exec(s.db, ctx,
-		`INSERT INTO __gas_migrations (version, service, description, migrate_version, module_version, dirty)
-		 VALUES (?, ?, ?, ?, ?, TRUE)
-		 ON CONFLICT (version) DO UPDATE SET dirty = TRUE`,
-		version, service, description, migrateVersion(), resolveModuleVersion(service))
+	_, err := s.exec(s.db, ctx, markMigrationDirtyQuery, version, service, description, migrateVersion(), resolveModuleVersion(service))
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to mark migration %s dirty: %w", version, err)
 	}
@@ -105,8 +84,7 @@ func (s *Service) markDirty(ctx context.Context, version, service, description s
 }
 
 func (s *Service) removeMigration(ctx context.Context, version string) error {
-	_, err := s.Exec(s.db, ctx,
-		`DELETE FROM __gas_migrations WHERE version = ?`, version)
+	_, err := s.exec(s.db, ctx, removeMigrationQuery, version)
 	if err != nil {
 		return fmt.Errorf("gas-migrate: failed to remove migration %s: %w", version, err)
 	}
