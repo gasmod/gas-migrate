@@ -25,7 +25,7 @@ func newTestDB(t *testing.T) gas.DatabaseProvider {
 	cfg.Database.Driver = database.DriverSQLite
 	cfg.Database.DSN = dsn
 	factory := database.New(database.WithConfig(cfg))
-	db := factory(nil)
+	db := factory(nil, gas.NewNopLogger()())
 	if err := db.Init(); err != nil {
 		t.Fatalf("database Init: %v", err)
 	}
