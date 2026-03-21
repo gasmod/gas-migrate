@@ -24,18 +24,9 @@ import (
 
 func main() {
 	app := gas.NewApp(
-		gas.WithService[*database.Service](
-			database.New(),
-			gas.ServiceLifetimeSingleton,
-		),
-		gas.WithService[*migrate.Service](
-			migrate.New(),
-			gas.ServiceLifetimeSingleton,
-		),
-		gas.WithService[*auth.Service](
-			auth.New,
-			gas.ServiceLifetimeSingleton,
-		),
+		gas.WithSingletonService[*database.Service](database.New()),
+		gas.WithSingletonService[*migrate.Service](migrate.New()),
+		gas.WithSingletonService[*auth.Service](auth.New),
 	)
 
 	app.Run()
