@@ -112,6 +112,8 @@ err := migrationMgr.Down(2)
 ## How it works
 
 - Migrations are tracked in a `__gas_migrations` table created automatically on `Init()`.
+- `Init()` selects the correct sqlc-generated query adapter based on the database driver
+  (PostgreSQL, MySQL, or SQLite). Unsupported drivers cause `Init()` to return an error.
 - `RunPending()` sorts all registered migrations globally by version across all services and applies any that haven't
   been applied yet.
 - Each migration runs in its own transaction. If a migration fails, it is marked **dirty** and all further execution is

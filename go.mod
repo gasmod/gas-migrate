@@ -3,7 +3,7 @@ module github.com/gasmod/gas-migrate
 go 1.25.6
 
 require (
-	github.com/gasmod/gas v0.2.13
+	github.com/gasmod/gas v0.2.14
 	github.com/gasmod/gas-database v0.2.5
 	modernc.org/sqlite v1.47.0
 )
@@ -20,7 +20,7 @@ require (
 	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.9.0 // indirect
+	github.com/jackc/pgx/v5 v5.9.1 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
