@@ -3,8 +3,8 @@ module github.com/gasmod/gas-migrate
 go 1.25.6
 
 require (
-	github.com/gasmod/gas v0.2.14
-	github.com/gasmod/gas-database v0.2.6
+	github.com/gasmod/gas v0.2.16
+	github.com/gasmod/gas-database v0.2.7
 	modernc.org/sqlite v1.47.0
 )
 
