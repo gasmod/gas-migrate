@@ -59,9 +59,20 @@ type migrationPair struct {
 }
 
 func parseMigrationFS(fsys fs.FS) ([]migrationPair, error) {
-	upFiles, err := fs.Glob(fsys, "*.up.sql")
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob up files: %w", err)
+	var upFiles []string
+	if err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".up.sql") {
+			upFiles = append(upFiles, path)
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to walk migration files: %w", err)
 	}
 
 	sort.Strings(upFiles)
