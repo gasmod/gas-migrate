@@ -16,6 +16,7 @@ import (
 var (
 	_ gas.Service          = (*Service)(nil)
 	_ gas.MigrationManager = (*Service)(nil)
+	_ gas.ReadyReporter    = (*Service)(nil)
 )
 
 func newTestDB(t *testing.T) gas.DatabaseProvider {
@@ -574,6 +575,78 @@ func TestParseStem(t *testing.T) {
 			t.Errorf("parseStem(%q) = (%q, %q), want (%q, %q)",
 				tt.stem, version, desc, tt.wantVersion, tt.wantDesc)
 		}
+	}
+}
+
+func TestCheckReady_NotInitialized(t *testing.T) {
+	s := New()(nil)
+	if err := s.CheckReady(context.Background()); err == nil {
+		t.Fatal("expected error when not initialized")
+	}
+}
+
+func TestCheckReady_Closed(t *testing.T) {
+	s, _ := newTestService(t)
+	s.Close()
+	if err := s.CheckReady(context.Background()); err == nil {
+		t.Fatal("expected error when closed")
+	}
+}
+
+func TestCheckReady_NoMigrations(t *testing.T) {
+	s, _ := newTestService(t)
+	if err := s.CheckReady(context.Background()); err != nil {
+		t.Fatalf("expected ready with no migrations registered, got: %v", err)
+	}
+}
+
+func TestCheckReady_PendingMigrations(t *testing.T) {
+	s, _ := newTestService(t)
+	s.Register("mod-a", gas.Migration{
+		Version:     "20250216001",
+		Description: "pending",
+		Up:          "CREATE TABLE pending_t (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE pending_t",
+	})
+
+	err := s.CheckReady(context.Background())
+	if err == nil {
+		t.Fatal("expected not-ready due to pending migration")
+	}
+	if !strings.Contains(err.Error(), "pending") {
+		t.Errorf("expected pending error, got: %v", err)
+	}
+}
+
+func TestCheckReady_AfterRunPending(t *testing.T) {
+	s, _ := newTestService(t)
+	s.Register("mod-a", gas.Migration{
+		Version:     "20250216001",
+		Description: "create",
+		Up:          "CREATE TABLE ready_t (id INTEGER PRIMARY KEY)",
+		Down:        "DROP TABLE ready_t",
+	})
+
+	if err := s.RunPending(); err != nil {
+		t.Fatalf("RunPending: %v", err)
+	}
+	if err := s.CheckReady(context.Background()); err != nil {
+		t.Fatalf("expected ready after RunPending, got: %v", err)
+	}
+}
+
+func TestCheckReady_DirtyMigration(t *testing.T) {
+	s, _ := newTestService(t)
+	if err := s.markDirty(context.Background(), "20250216001", "mod-a", "broken"); err != nil {
+		t.Fatalf("markDirty: %v", err)
+	}
+
+	err := s.CheckReady(context.Background())
+	if err == nil {
+		t.Fatal("expected not-ready due to dirty migration")
+	}
+	if !strings.Contains(err.Error(), "dirty") {
+		t.Errorf("expected dirty error, got: %v", err)
 	}
 }
 

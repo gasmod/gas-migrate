@@ -55,15 +55,27 @@ migrate.New()  // → func(gas.DatabaseProvider) *Service
 
 ## Service
 
-Implements both `gas.Service` and `gas.MigrationManager`.
+Implements `gas.Service`, `gas.MigrationManager`, and `gas.ReadyReporter`.
 
 ### Lifecycle
 
-| Method  | Signature   | Description                                            |
-|---------|-------------|--------------------------------------------------------|
-| `Name`  | `() string` | Returns `"gas-migrate"`                                |
-| `Init`  | `() error`  | Validates DatabaseProvider, creates `__gas_migrations` |
-| `Close` | `() error`  | Marks service as closed; further operations error      |
+| Method       | Signature                       | Description                                            |
+|--------------|---------------------------------|--------------------------------------------------------|
+| `Name`       | `() string`                     | Returns `"gas-migrate"`                                |
+| `Init`       | `() error`                      | Validates DatabaseProvider, creates `__gas_migrations` |
+| `Close`      | `() error`                      | Marks service as closed; further operations error      |
+| `CheckReady` | `(ctx context.Context) error`   | Reports ready when no dirty or pending migrations      |
+
+### Readiness
+
+`CheckReady` implements `gas.ReadyReporter` (Kubernetes readinessProbe). It returns a non-nil error when:
+
+- The service is closed or not yet initialized.
+- Any tracked migration is **dirty**.
+- Any registered migration has not been applied yet.
+
+`gas.HealthReporter` is intentionally not implemented — `gas-migrate` owns no live runtime state distinct from
+the underlying DB, which `gas-database` reports on. Implementing both would duplicate or conflict with that signal.
 
 ### Registering Migrations
 

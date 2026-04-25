@@ -122,6 +122,14 @@ err := migrationMgr.Down(2)
 - **Version collision detection**: If two services register migrations with the same version, `RunPending()` and `Down()`
   return an error identifying the conflicting version and both service names.
 
+## Readiness
+
+The service implements `gas.ReadyReporter`. `CheckReady(ctx)` returns nil only when the service is initialized, not
+closed, has no dirty migrations, and has no registered migrations pending application. This maps to a Kubernetes
+readinessProbe — traffic is gated until migrations have applied successfully. `gas.HealthReporter` is intentionally
+not implemented, since `gas-migrate` owns no live runtime state distinct from the underlying database connection
+(which `gas-database` reports on).
+
 ## Dirty migrations
 
 If a migration fails, it is recorded as dirty in the tracking table. Subsequent calls to `RunPending()` will return an

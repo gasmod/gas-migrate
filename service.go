@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -81,5 +82,54 @@ func (s *Service) Init() error {
 // Close marks the service as closed.
 func (s *Service) Close() error {
 	s.closed.Store(true)
+	return nil
+}
+
+// CheckReady reports whether the service is ready to accept traffic. It
+// returns an error if the service is closed, not initialized, has any dirty
+// migrations, or has registered migrations that have not yet been applied.
+func (s *Service) CheckReady(ctx context.Context) error {
+	if s.closed.Load() {
+		return fmt.Errorf("gas-migrate: service is closed")
+	}
+	if s.q == nil {
+		return fmt.Errorf("gas-migrate: not initialized")
+	}
+
+	dirty, err := s.getDirtyMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	if len(dirty) > 0 {
+		versions := make([]string, len(dirty))
+		for i, d := range dirty {
+			versions[i] = d.Version
+		}
+		return fmt.Errorf("gas-migrate: dirty migrations: %s", strings.Join(versions, ", "))
+	}
+
+	applied, err := s.getAppliedMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	appliedSet := make(map[string]struct{}, len(applied))
+	for _, a := range applied {
+		appliedSet[a.Version] = struct{}{}
+	}
+
+	s.mu.Lock()
+	pending := 0
+	for _, migs := range s.migrations {
+		for _, m := range migs {
+			if _, ok := appliedSet[m.Version]; !ok {
+				pending++
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	if pending > 0 {
+		return fmt.Errorf("gas-migrate: %d pending migration(s)", pending)
+	}
 	return nil
 }
