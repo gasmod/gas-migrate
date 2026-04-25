@@ -227,7 +227,7 @@ func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
 			return fmt.Errorf("gas-migrate: migration %s failed: %w (also failed to mark dirty: %w)",
 				migration.Version, err, markErr)
 		}
-		return fmt.Errorf("gas-migrate: migration \"%s_%s\" failed (marked dirty): %w", migration.Version, migration.Description, err)
+		return fmt.Errorf("gas-migrate: migration %q (Version: %s) failed (marked dirty): %w", migration.Description, migration.Version, err)
 	}
 
 	if err := tx.Commit(); err != nil {
