@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -33,8 +34,8 @@ func (s *Service) getDirtyMigrations(ctx context.Context) ([]appliedMigration, e
 	return dirty, nil
 }
 
-func (s *Service) markApplied(ctx context.Context, version, service, description string) error {
-	if err := s.q.markMigrationApplied(ctx, version, service, description, migrateVersion(), resolveModuleVersion(service)); err != nil {
+func (s *Service) markApplied(ctx context.Context, tx *sql.Tx, version, service, description string) error {
+	if err := s.q.markMigrationApplied(ctx, tx, version, service, description, migrateVersion(), resolveModuleVersion(service)); err != nil {
 		return fmt.Errorf("gas-migrate: failed to mark migration %s applied: %w", version, err)
 	}
 	return nil

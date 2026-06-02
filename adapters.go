@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	mydb "github.com/gasmod/gas-migrate/db/mysql"
@@ -59,9 +60,9 @@ func (a *postgresAdapter) getDirtyMigrations(ctx context.Context) ([]appliedMigr
 	return out, nil
 }
 
-func (a *postgresAdapter) markMigrationApplied(ctx context.Context, version, service, description, migrateVersion, moduleVersion string) error {
+func (a *postgresAdapter) markMigrationApplied(ctx context.Context, tx *sql.Tx, version, service, description, migrateVersion, moduleVersion string) error {
 	//nolint:wrapcheck // wrapped by the caller
-	return a.q.MarkMigrationApplied(ctx, pgdb.MarkMigrationAppliedParams{
+	return a.q.WithTx(tx).MarkMigrationApplied(ctx, pgdb.MarkMigrationAppliedParams{
 		Version:        version,
 		Service:        service,
 		Description:    description,
@@ -136,9 +137,9 @@ func (a *mysqlAdapter) getDirtyMigrations(ctx context.Context) ([]appliedMigrati
 	return out, nil
 }
 
-func (a *mysqlAdapter) markMigrationApplied(ctx context.Context, version, service, description, migrateVersion, moduleVersion string) error {
+func (a *mysqlAdapter) markMigrationApplied(ctx context.Context, tx *sql.Tx, version, service, description, migrateVersion, moduleVersion string) error {
 	//nolint:wrapcheck // wrapped by the caller
-	return a.q.MarkMigrationApplied(ctx, mydb.MarkMigrationAppliedParams{
+	return a.q.WithTx(tx).MarkMigrationApplied(ctx, mydb.MarkMigrationAppliedParams{
 		Version:        version,
 		Service:        service,
 		Description:    description,
@@ -213,9 +214,9 @@ func (a *sqliteAdapter) getDirtyMigrations(ctx context.Context) ([]appliedMigrat
 	return out, nil
 }
 
-func (a *sqliteAdapter) markMigrationApplied(ctx context.Context, version, service, description, migrateVersion, moduleVersion string) error {
+func (a *sqliteAdapter) markMigrationApplied(ctx context.Context, tx *sql.Tx, version, service, description, migrateVersion, moduleVersion string) error {
 	//nolint:wrapcheck // wrapped by the caller
-	return a.q.MarkMigrationApplied(ctx, litedb.MarkMigrationAppliedParams{
+	return a.q.WithTx(tx).MarkMigrationApplied(ctx, litedb.MarkMigrationAppliedParams{
 		Version:        version,
 		Service:        service,
 		Description:    description,
