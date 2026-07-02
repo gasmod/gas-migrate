@@ -230,6 +230,21 @@ func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
 		return fmt.Errorf("gas-migrate: migration %q (Version: %s) failed (marked dirty): %w", migration.Description, migration.Version, err)
 	}
 
+	// Record the migration as applied inside the same transaction as its DDL,
+	// so the schema change and the tracking row commit atomically. If recording
+	// fails (or the process crashes here), the whole transaction rolls back and
+	// the database is left unchanged — rather than schema-applied-but-unrecorded,
+	// which would re-run the non-idempotent DDL on the next pass and wedge the
+	// pipeline as dirty.
+	if err := s.markApplied(ctx, tx, migration.Version, migration.Service, migration.Description); err != nil {
+		_ = tx.Rollback()
+		if markErr := s.markDirty(ctx, migration.Version, migration.Service, migration.Description); markErr != nil {
+			return fmt.Errorf("gas-migrate: recording migration %s failed: %w (also failed to mark dirty: %w)",
+				migration.Version, err, markErr)
+		}
+		return fmt.Errorf("gas-migrate: recording migration %q (Version: %s) failed (marked dirty): %w", migration.Description, migration.Version, err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		if markErr := s.markDirty(ctx, migration.Version, migration.Service, migration.Description); markErr != nil {
 			return fmt.Errorf("gas-migrate: commit failed for %s: %w (also failed to mark dirty: %w)",
@@ -238,7 +253,7 @@ func (s *Service) applyUp(ctx context.Context, migration gas.Migration) error {
 		return fmt.Errorf("gas-migrate: commit failed for %s (marked dirty): %w", migration.Version, err)
 	}
 
-	return s.markApplied(ctx, migration.Version, migration.Service, migration.Description)
+	return nil
 }
 
 func (s *Service) applyDown(ctx context.Context, migration gas.Migration) error {
